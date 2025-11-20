@@ -56,9 +56,20 @@ def fixture_arg_spec():
             "asset_tag": "1001",
             "custom_fields": {
                 "Key1": "Value1",
-                "Key2": "Value2",
                 "Key3": "Value3",
+                "Key2": "Value2",
             },
+            "tagged_vlans": [
+                4,
+                8,
+                5,
+                6,
+                10,
+            ],
+            "object_types": [
+                "ipam.service",
+                "ipam.ipaddress",
+            ],
         },
         "state": "present",
         "validate_certs": False,
@@ -81,6 +92,17 @@ def normalized_data():
             "Key2": "Value2",
             "Key3": "Value3",
         },
+        "tagged_vlans": [
+            4,
+            5,
+            6,
+            8,
+            10,
+        ],
+        "object_types": [
+            "ipam.ipaddress",
+            "ipam.service",
+        ],
     }
 
 

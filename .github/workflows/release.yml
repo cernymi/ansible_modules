@@ -4,8 +4,10 @@ on:
   push:
     tags:
       - "v*"
+
 jobs:
   deploy:
+    if: ${{ github.repository == 'netbox-community/ansible_modules' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo

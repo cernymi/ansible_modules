@@ -64,13 +64,6 @@ def inventory_fixture(
 
 
 @pytest.fixture
-def templar_fixture():
-    templar = Mock()
-
-    return templar
-
-
-@pytest.fixture
 def allowed_device_query_parameters_fixture():
     # Subset of parameters - real list is fetched dynamically from NetBox openapi endpoint
     return [
@@ -246,17 +239,11 @@ def test_fetch_api_docs(inventory_fixture, netbox_ver):
     assert str(inventory_fixture.api_version) == netbox_ver[:-2]
 
 
-def test_new_token(inventory_fixture, templar_fixture):
-    mock_get_option = Mock()
-
-    mock_templar_template_token = Mock()
-    mock_templar_template_token.return_value = {"type": "foo", "value": "bar"}
-
-    inventory_fixture.templar = templar_fixture
-    inventory_fixture.templar.template = mock_templar_template_token
-
-    inventory_fixture.get_option = mock_get_option
-
+def test_new_token(inventory_fixture):
+    inventory_fixture.templar = Mock(
+        template=Mock(return_value={"type": "foo", "value": "bar"})
+    )
+    inventory_fixture.get_option = Mock()
     inventory_fixture.headers = {}
 
     inventory_fixture._set_authorization()

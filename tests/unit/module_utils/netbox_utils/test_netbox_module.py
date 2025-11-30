@@ -43,7 +43,8 @@ load_relative_test_data = partial(load_test_data, Path(__file__).resolve().paren
 
 
 @pytest.fixture
-def fixture_arg_spec():
+def data_arg_spec():
+    """Ansible module data with NETBOX_ARG_SPEC"""
     return {
         "netbox_url": "http://netbox.local/",
         "netbox_token": "0123456789",
@@ -68,7 +69,13 @@ def fixture_arg_spec():
 
 
 @pytest.fixture
-def normalized_data():
+def data_arg_spec_data():
+    """
+    Normalized subset of `data_arg_spec`, containing only the `data` dictionary.
+
+    Represents the processed or canonical form of module input data
+    without metadata fields like 'netbox_url', 'netbox_token', etc.
+    """
     return {
         "name": "Test Device1",
         "device_role": "core-switch",
@@ -85,10 +92,10 @@ def normalized_data():
 
 
 @pytest.fixture
-def mock_ansible_module(fixture_arg_spec):
+def mock_ansible_module(data_arg_spec):
     module = MagicMock(name="AnsibleModule")
     module.check_mode = False
-    module.params = fixture_arg_spec
+    module.params = data_arg_spec
 
     return module
 
@@ -106,12 +113,12 @@ def find_ids_return():
 
 
 @pytest.fixture
-def nb_obj_mock(mocker, normalized_data):
+def nb_obj_mock(mocker, data_arg_spec_data):
     nb_obj = mocker.Mock(name="nb_obj_mock")
     nb_obj.delete.return_value = True
     nb_obj.update.return_value = True
-    nb_obj.update.side_effect = normalized_data.update
-    nb_obj.serialize.return_value = normalized_data
+    nb_obj.update.side_effect = data_arg_spec_data.update
+    nb_obj.serialize.return_value = data_arg_spec_data
 
     return nb_obj
 
@@ -295,26 +302,26 @@ def test_build_diff_returns_valid_diff(mock_netbox_module):
 
 
 def test_create_netbox_object_check_mode_false(
-    mock_netbox_module, endpoint_mock, normalized_data, on_creation_diff
+    mock_netbox_module, endpoint_mock, data_arg_spec_data, on_creation_diff
 ):
     return_value = endpoint_mock.create().serialize()
     serialized_obj, diff = mock_netbox_module._create_netbox_object(
-        endpoint_mock, normalized_data
+        endpoint_mock, data_arg_spec_data
     )
-    endpoint_mock.create.assert_called_with(normalized_data)
+    endpoint_mock.create.assert_called_with(data_arg_spec_data)
     assert serialized_obj.serialize() == return_value
     assert diff == on_creation_diff
 
 
 def test_create_netbox_object_check_mode_true(
-    mock_netbox_module, endpoint_mock, normalized_data, on_creation_diff
+    mock_netbox_module, endpoint_mock, data_arg_spec_data, on_creation_diff
 ):
     mock_netbox_module.check_mode = True
     serialized_obj, diff = mock_netbox_module._create_netbox_object(
-        endpoint_mock, normalized_data
+        endpoint_mock, data_arg_spec_data
     )
     endpoint_mock.create.assert_not_called()
-    assert serialized_obj == normalized_data
+    assert serialized_obj == data_arg_spec_data
     assert diff == on_creation_diff
 
 

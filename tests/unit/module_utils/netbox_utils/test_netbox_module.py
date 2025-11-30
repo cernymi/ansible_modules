@@ -10,7 +10,6 @@ __metaclass__ = type
 import re
 from functools import partial
 from pathlib import Path
-from unittest.mock import MagicMock
 import pytest
 
 try:
@@ -107,8 +106,14 @@ def data_find_ids_return():
 
 
 @pytest.fixture
-def mock_ansible_module(data_arg_spec):
-    module = MagicMock(name="AnsibleModule")
+def mock_ansible_module(mocker, data_arg_spec):
+    """
+    Return a mocked AnsibleModule instance for testing NetboxModule.
+
+    The mock sets `check_mode` to False and uses `data_arg_spec` as its parameters.
+    Useful for injecting into NetboxModule tests without requiring a real Ansible runtime.
+    """
+    module = mocker.MagicMock(name="AnsibleModule")
     module.check_mode = False
     module.params = data_arg_spec
 
@@ -116,8 +121,17 @@ def mock_ansible_module(data_arg_spec):
 
 
 @pytest.fixture
-def nb_obj_mock(mocker, data_arg_spec_data):
-    nb_obj = mocker.Mock(name="nb_obj_mock")
+def mock_nb_resp(mocker, data_arg_spec_data):
+    """
+    Return a mocked NetBox object simulating CRUD operations.
+
+    - `delete` returns True.
+    - `update` returns True, with `side_effect` set to the normalized data update.
+    - `serialize` returns `data_arg_spec_data`.
+
+    Used to test NetboxModule logic that interacts with NetBox objects.
+    """
+    nb_obj = mocker.Mock(name="mock_nb_resp")
     nb_obj.delete.return_value = True
     nb_obj.update.return_value = True
     nb_obj.update.side_effect = data_arg_spec_data.update
@@ -127,29 +141,21 @@ def nb_obj_mock(mocker, data_arg_spec_data):
 
 
 @pytest.fixture
-def endpoint_mock(mocker, nb_obj_mock):
-    endpoint = mocker.Mock(name="endpoint_mock")
-    endpoint.create.return_value = nb_obj_mock
+def mock_endpoint(mocker, mock_nb_resp):
+    """
+    Return a mocked NetBox endpoint object with a `create()` method.
+
+    - `create()` returns the mocked NetBox response object (`mock_nb_resp`).
+    - Used to simulate NetBox API endpoints in unit tests without real API calls.
+    """
+    endpoint = mocker.Mock(name="mock_endpoint")
+    endpoint.create.return_value = mock_nb_resp
 
     return endpoint
 
 
 @pytest.fixture
-def on_creation_diff(mock_netbox_module):
-    return mock_netbox_module._build_diff(
-        before={"state": "absent"}, after={"state": "present"}
-    )
-
-
-@pytest.fixture
-def on_deletion_diff(mock_netbox_module):
-    return mock_netbox_module._build_diff(
-        before={"state": "present"}, after={"state": "absent"}
-    )
-
-
-@pytest.fixture
-def mock_netbox_module(mocker, mock_ansible_module, data_find_ids_return):
+def mock_netbox_module_ids(mocker, mock_ansible_module, data_find_ids_return):
     find_ids = mocker.patch("%s%s" % (MOCKER_PATCH_PATH, "._find_ids"))
     find_ids.return_value = data_find_ids_return
     nb_client = mocker.Mock(name="pynetbox.api")
@@ -160,8 +166,22 @@ def mock_netbox_module(mocker, mock_ansible_module, data_find_ids_return):
 
 
 @pytest.fixture
-def changed_serialized_obj(nb_obj_mock):
-    changed_serialized_obj = nb_obj_mock.serialize().copy()
+def on_creation_diff(mock_netbox_module_ids):
+    return mock_netbox_module_ids._build_diff(
+        before={"state": "absent"}, after={"state": "present"}
+    )
+
+
+@pytest.fixture
+def on_deletion_diff(mock_netbox_module_ids):
+    return mock_netbox_module_ids._build_diff(
+        before={"state": "present"}, after={"state": "absent"}
+    )
+
+
+@pytest.fixture
+def changed_serialized_obj(mock_nb_resp):
+    changed_serialized_obj = mock_nb_resp.serialize().copy()
     changed_serialized_obj["name"] += " (modified)"
     changed_serialized_obj["custom_fields"] = {
         "Key1": "NewValue1",
@@ -171,8 +191,8 @@ def changed_serialized_obj(nb_obj_mock):
 
 
 @pytest.fixture
-def on_update_diff(mock_netbox_module, nb_obj_mock, changed_serialized_obj):
-    return mock_netbox_module._build_diff(
+def on_update_diff(mock_netbox_module_ids, mock_nb_resp, changed_serialized_obj):
+    return mock_netbox_module_ids._build_diff(
         before={
             "name": "Test Device1",
             "custom_fields": {
@@ -188,35 +208,37 @@ def on_update_diff(mock_netbox_module, nb_obj_mock, changed_serialized_obj):
     )
 
 
-def test_init(mock_netbox_module, data_find_ids_return):
+def test_init(mock_netbox_module_ids, data_find_ids_return):
     """Test that we can get a real mock NetboxModule."""
-    assert mock_netbox_module.data == data_find_ids_return
+    assert mock_netbox_module_ids.data == data_find_ids_return
 
 
 @pytest.mark.parametrize("before, after", load_relative_test_data("normalize_data"))
-def test_normalize_data_returns_correct_data(mock_netbox_module, before, after):
-    norm_data = mock_netbox_module._normalize_data(before)
+def test_normalize_data_returns_correct_data(mock_netbox_module_ids, before, after):
+    norm_data = mock_netbox_module_ids._normalize_data(before)
 
     assert norm_data == after
 
 
 @pytest.mark.parametrize("data, expected", load_relative_test_data("arg_spec_default"))
-def test_remove_arg_spec_defaults(mock_netbox_module, data, expected):
-    new_data = mock_netbox_module._remove_arg_spec_default(data)
+def test_remove_arg_spec_defaults(mock_netbox_module_ids, data, expected):
+    new_data = mock_netbox_module_ids._remove_arg_spec_default(data)
 
     assert new_data == expected
 
 
 @pytest.mark.parametrize("non_slug, expected", load_relative_test_data("slug"))
-def test_to_slug_returns_valid_slug(mock_netbox_module, non_slug, expected):
-    got_slug = mock_netbox_module._to_slug(non_slug)
+def test_to_slug_returns_valid_slug(mock_netbox_module_ids, non_slug, expected):
+    got_slug = mock_netbox_module_ids._to_slug(non_slug)
 
     assert got_slug == expected
 
 
 @pytest.mark.parametrize("endpoint, app", load_relative_test_data("find_app"))
-def test_find_app_returns_valid_app(mock_netbox_module, endpoint, app):
-    assert app == mock_netbox_module._find_app(endpoint), "app: %s, endpoint: %s" % (
+def test_find_app_returns_valid_app(mock_netbox_module_ids, endpoint, app):
+    assert app == mock_netbox_module_ids._find_app(
+        endpoint
+    ), "app: %s, endpoint: %s" % (
         app,
         endpoint,
     )
@@ -225,12 +247,12 @@ def test_find_app_returns_valid_app(mock_netbox_module, endpoint, app):
 @pytest.mark.parametrize(
     "endpoint, data, expected", load_relative_test_data("choices_id")
 )
-def test_change_choices_id(mocker, mock_netbox_module, endpoint, data, expected):
+def test_change_choices_id(mocker, mock_netbox_module_ids, endpoint, data, expected):
     fetch_choice_value = mocker.patch(
         "%s%s" % (MOCKER_PATCH_PATH, "._fetch_choice_value")
     )
     fetch_choice_value.return_value = "temp"
-    new_data = mock_netbox_module._change_choices_id(endpoint, data)
+    new_data = mock_netbox_module_ids._change_choices_id(endpoint, data)
     assert new_data == expected
 
 
@@ -239,13 +261,13 @@ def test_change_choices_id(mocker, mock_netbox_module, endpoint, data, expected)
     load_relative_test_data("build_query_params_no_child"),
 )
 def test_build_query_params_no_child(
-    mock_netbox_module, mocker, parent, module_data, expected
+    mock_netbox_module_ids, mocker, parent, module_data, expected
 ):
     get_query_param_id = mocker.patch(
         "%s%s" % (MOCKER_PATCH_PATH, "._get_query_param_id")
     )
     get_query_param_id.return_value = 1
-    query_params = mock_netbox_module._build_query_params(parent, module_data)
+    query_params = mock_netbox_module_ids._build_query_params(parent, module_data)
     assert query_params == expected, query_params
 
 
@@ -254,7 +276,7 @@ def test_build_query_params_no_child(
     load_relative_test_data("build_query_params_child"),
 )
 def test_build_query_params_child(
-    mock_netbox_module, mocker, parent, module_data, child, expected
+    mock_netbox_module_ids, mocker, parent, module_data, child, expected
 ):
     get_query_param_id = mocker.patch(
         "%s%s" % (MOCKER_PATCH_PATH, "._get_query_param_id")
@@ -266,7 +288,7 @@ def test_build_query_params_child(
     )
     fetch_choice_value.return_value = 200
 
-    query_params = mock_netbox_module._build_query_params(
+    query_params = mock_netbox_module_ids._build_query_params(
         parent, module_data, child=child
     )
     print(query_params)
@@ -278,7 +300,7 @@ def test_build_query_params_child(
     load_relative_test_data("build_query_params_user_query_params"),
 )
 def test_build_query_params_user_query_params(
-    mock_netbox_module, mocker, parent, module_data, user_query_params, expected
+    mock_netbox_module_ids, mocker, parent, module_data, user_query_params, expected
 ):
     get_query_param_id = mocker.patch(
         "%s%s" % (MOCKER_PATCH_PATH, "._get_query_param_id")
@@ -290,132 +312,138 @@ def test_build_query_params_user_query_params(
     )
     fetch_choice_value.return_value = 200
 
-    query_params = mock_netbox_module._build_query_params(
+    query_params = mock_netbox_module_ids._build_query_params(
         parent, module_data, user_query_params
     )
     assert query_params == expected
 
 
-def test_build_diff_returns_valid_diff(mock_netbox_module):
+def test_build_diff_returns_valid_diff(mock_netbox_module_ids):
     before = "The state before"
     after = {"A": "more", "complicated": "state"}
-    diff = mock_netbox_module._build_diff(before=before, after=after)
+    diff = mock_netbox_module_ids._build_diff(before=before, after=after)
 
     assert diff == {"before": before, "after": after}
 
 
 def test_create_netbox_object_check_mode_false(
-    mock_netbox_module, endpoint_mock, data_arg_spec_data, on_creation_diff
+    mock_netbox_module_ids, mock_endpoint, data_arg_spec_data, on_creation_diff
 ):
-    return_value = endpoint_mock.create().serialize()
-    serialized_obj, diff = mock_netbox_module._create_netbox_object(
-        endpoint_mock, data_arg_spec_data
+    return_value = mock_endpoint.create().serialize()
+    serialized_obj, diff = mock_netbox_module_ids._create_netbox_object(
+        mock_endpoint, data_arg_spec_data
     )
-    endpoint_mock.create.assert_called_with(data_arg_spec_data)
+    mock_endpoint.create.assert_called_with(data_arg_spec_data)
     assert serialized_obj.serialize() == return_value
     assert diff == on_creation_diff
 
 
 def test_create_netbox_object_check_mode_true(
-    mock_netbox_module, endpoint_mock, data_arg_spec_data, on_creation_diff
+    mock_netbox_module_ids, mock_endpoint, data_arg_spec_data, on_creation_diff
 ):
-    mock_netbox_module.check_mode = True
-    serialized_obj, diff = mock_netbox_module._create_netbox_object(
-        endpoint_mock, data_arg_spec_data
+    mock_netbox_module_ids.check_mode = True
+    serialized_obj, diff = mock_netbox_module_ids._create_netbox_object(
+        mock_endpoint, data_arg_spec_data
     )
-    endpoint_mock.create.assert_not_called()
+    mock_endpoint.create.assert_not_called()
     assert serialized_obj == data_arg_spec_data
     assert diff == on_creation_diff
 
 
 def test_delete_netbox_object_check_mode_false(
-    mock_netbox_module, nb_obj_mock, on_deletion_diff
+    mock_netbox_module_ids, mock_nb_resp, on_deletion_diff
 ):
-    mock_netbox_module.nb_object = nb_obj_mock
-    diff = mock_netbox_module._delete_netbox_object()
-    nb_obj_mock.delete.assert_called_once()
+    mock_netbox_module_ids.nb_object = mock_nb_resp
+    diff = mock_netbox_module_ids._delete_netbox_object()
+    mock_nb_resp.delete.assert_called_once()
     assert diff == on_deletion_diff
 
 
 def test_delete_netbox_object_check_mode_true(
-    mock_netbox_module, nb_obj_mock, on_deletion_diff
+    mock_netbox_module_ids, mock_nb_resp, on_deletion_diff
 ):
-    mock_netbox_module.check_mode = True
-    mock_netbox_module.nb_object = nb_obj_mock
-    diff = mock_netbox_module._delete_netbox_object()
-    nb_obj_mock.delete.assert_not_called()
+    mock_netbox_module_ids.check_mode = True
+    mock_netbox_module_ids.nb_object = mock_nb_resp
+    diff = mock_netbox_module_ids._delete_netbox_object()
+    mock_nb_resp.delete.assert_not_called()
     assert diff == on_deletion_diff
 
 
-def test_update_netbox_object_no_changes(mock_netbox_module, nb_obj_mock):
-    mock_netbox_module.nb_object = nb_obj_mock
-    unchanged_data = nb_obj_mock.serialize()
-    serialized_object, diff = mock_netbox_module._update_netbox_object(unchanged_data)
-    nb_obj_mock.update.assert_not_called()
+def test_update_netbox_object_no_changes(mock_netbox_module_ids, mock_nb_resp):
+    mock_netbox_module_ids.nb_object = mock_nb_resp
+    unchanged_data = mock_nb_resp.serialize()
+    serialized_object, diff = mock_netbox_module_ids._update_netbox_object(
+        unchanged_data
+    )
+    mock_nb_resp.update.assert_not_called()
     assert serialized_object == unchanged_data
     assert diff is None
 
 
 def test_update_netbox_object_with_changes_check_mode_false(
-    mock_netbox_module, nb_obj_mock, changed_serialized_obj, on_update_diff
+    mock_netbox_module_ids, mock_nb_resp, changed_serialized_obj, on_update_diff
 ):
-    mock_netbox_module.nb_object = nb_obj_mock
-    serialized_obj, diff = mock_netbox_module._update_netbox_object(
+    mock_netbox_module_ids.nb_object = mock_nb_resp
+    serialized_obj, diff = mock_netbox_module_ids._update_netbox_object(
         changed_serialized_obj
     )
-    nb_obj_mock.update.assert_called_once_with(changed_serialized_obj)
-    assert serialized_obj == nb_obj_mock.serialize()
+    mock_nb_resp.update.assert_called_once_with(changed_serialized_obj)
+    assert serialized_obj == mock_nb_resp.serialize()
     assert diff == on_update_diff
 
 
 def test_update_netbox_object_with_changes_check_mode_true(
-    mock_netbox_module, nb_obj_mock, changed_serialized_obj, on_update_diff
+    mock_netbox_module_ids, mock_nb_resp, changed_serialized_obj, on_update_diff
 ):
-    mock_netbox_module.nb_object = nb_obj_mock
-    mock_netbox_module.check_mode = True
-    updated_serialized_obj = nb_obj_mock.serialize().copy()
+    mock_netbox_module_ids.nb_object = mock_nb_resp
+    mock_netbox_module_ids.check_mode = True
+    updated_serialized_obj = mock_nb_resp.serialize().copy()
     updated_serialized_obj.update(changed_serialized_obj)
 
-    serialized_obj, diff = mock_netbox_module._update_netbox_object(
+    serialized_obj, diff = mock_netbox_module_ids._update_netbox_object(
         changed_serialized_obj
     )
-    nb_obj_mock.update.assert_not_called()
+    mock_nb_resp.update.assert_not_called()
     assert serialized_obj == updated_serialized_obj
     assert diff == on_update_diff
 
 
 @pytest.mark.parametrize("version", ["2.13", "2.12", "2.11", "2.10.8", "2.10"])
-def test_version_check_greater_true(mock_netbox_module, nb_obj_mock, version):
-    mock_netbox_module.nb_object = nb_obj_mock
-    assert mock_netbox_module._version_check_greater(version, "2.9")
-    assert mock_netbox_module._version_check_greater(version, "2.9.11")
+def test_version_check_greater_true(mock_netbox_module_ids, mock_nb_resp, version):
+    mock_netbox_module_ids.nb_object = mock_nb_resp
+    assert mock_netbox_module_ids._version_check_greater(version, "2.9")
+    assert mock_netbox_module_ids._version_check_greater(version, "2.9.11")
 
 
 @pytest.mark.parametrize("version", ["2.9", "2.8", "2.7.12", "2.7"])
-def test_version_check_greater_false(mock_netbox_module, nb_obj_mock, version):
-    mock_netbox_module.nb_object = nb_obj_mock
-    assert not mock_netbox_module._version_check_greater(version, "2.10")
-    assert not mock_netbox_module._version_check_greater(version, "2.10.8")
+def test_version_check_greater_false(mock_netbox_module_ids, mock_nb_resp, version):
+    mock_netbox_module_ids.nb_object = mock_nb_resp
+    assert not mock_netbox_module_ids._version_check_greater(version, "2.10")
+    assert not mock_netbox_module_ids._version_check_greater(version, "2.10.8")
 
 
 @pytest.mark.parametrize("version", ["2.9", "2.8", "2.7.5", "2.7"])
-def test_version_check_greater_equal_to_true(mock_netbox_module, nb_obj_mock, version):
-    mock_netbox_module.nb_object = nb_obj_mock
-    assert mock_netbox_module._version_check_greater(
+def test_version_check_greater_equal_to_true(
+    mock_netbox_module_ids, mock_nb_resp, version
+):
+    mock_netbox_module_ids.nb_object = mock_nb_resp
+    assert mock_netbox_module_ids._version_check_greater(
         version, "2.7", greater_or_equal=True
     )
-    assert mock_netbox_module._version_check_greater(
+    assert mock_netbox_module_ids._version_check_greater(
         version, "2.6.12", greater_or_equal=True
     )
 
 
 @pytest.mark.parametrize("version", ["2.6", "2.5", "2.4"])
-def test_version_check_greater_equal_to_false(mock_netbox_module, nb_obj_mock, version):
-    mock_netbox_module.nb_object = nb_obj_mock
-    assert not mock_netbox_module._version_check_greater(
+def test_version_check_greater_equal_to_false(
+    mock_netbox_module_ids, mock_nb_resp, version
+):
+    mock_netbox_module_ids.nb_object = mock_nb_resp
+    assert not mock_netbox_module_ids._version_check_greater(
         version, "2.7", greater_or_equal=True
     )
-    assert not mock_netbox_module._version_check_greater(
+    assert not mock_netbox_module_ids._version_check_greater(
         version, "2.7.7", greater_or_equal=True
     )
 
@@ -434,15 +462,17 @@ def test_version_check_greater_equal_to_false(mock_netbox_module, nb_obj_mock, v
         ("10.20.30foobar", "10.20.30"),
     ],
 )
-def test_version_sanitize_to_true(mock_netbox_module, nb_obj_mock, raw_value, expected):
-    mock_netbox_module.nb_object = nb_obj_mock
-    sanitized = mock_netbox_module._version_sanitize(raw_value)
+def test_version_sanitize_to_true(
+    mock_netbox_module_ids, mock_nb_resp, raw_value, expected
+):
+    mock_netbox_module_ids.nb_object = mock_nb_resp
+    sanitized = mock_netbox_module_ids._version_sanitize(raw_value)
     assert sanitized == expected
     assert re.match(r"^\d+(\.\d+)*$", sanitized)
 
 
 @pytest.mark.parametrize("version", [None, [], {}, "", "aa-dev", "-4", ".4", "dev-4"])
-def test_version_sanitize_value_error(mock_netbox_module, nb_obj_mock, version):
-    mock_netbox_module.nb_object = nb_obj_mock
+def test_version_sanitize_value_error(mock_netbox_module_ids, mock_nb_resp, version):
+    mock_netbox_module_ids.nb_object = mock_nb_resp
     with pytest.raises(ValueError):
-        mock_netbox_module._version_sanitize(version)
+        mock_netbox_module_ids._version_sanitize(version)

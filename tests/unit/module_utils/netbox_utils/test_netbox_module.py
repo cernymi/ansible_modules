@@ -92,16 +92,10 @@ def data_arg_spec_data():
 
 
 @pytest.fixture
-def mock_ansible_module(data_arg_spec):
-    module = MagicMock(name="AnsibleModule")
-    module.check_mode = False
-    module.params = data_arg_spec
-
-    return module
-
-
-@pytest.fixture
-def find_ids_return():
+def data_find_ids_return():
+    """
+    Sample return value for the `_find_ids` method in NetboxModule tests.
+    """
     return {
         "name": "Test Device1",
         "role": 1,
@@ -110,6 +104,15 @@ def find_ids_return():
         "site": 1,
         "asset_tag": "1001",
     }
+
+
+@pytest.fixture
+def mock_ansible_module(data_arg_spec):
+    module = MagicMock(name="AnsibleModule")
+    module.check_mode = False
+    module.params = data_arg_spec
+
+    return module
 
 
 @pytest.fixture
@@ -146,9 +149,9 @@ def on_deletion_diff(mock_netbox_module):
 
 
 @pytest.fixture
-def mock_netbox_module(mocker, mock_ansible_module, find_ids_return):
+def mock_netbox_module(mocker, mock_ansible_module, data_find_ids_return):
     find_ids = mocker.patch("%s%s" % (MOCKER_PATCH_PATH, "._find_ids"))
-    find_ids.return_value = find_ids_return
+    find_ids.return_value = data_find_ids_return
     nb_client = mocker.Mock(name="pynetbox.api")
     nb_client.version = "2.10"
     netbox = NetboxModule(mock_ansible_module, NB_DEVICES, nb_client=nb_client)
@@ -185,9 +188,9 @@ def on_update_diff(mock_netbox_module, nb_obj_mock, changed_serialized_obj):
     )
 
 
-def test_init(mock_netbox_module, find_ids_return):
+def test_init(mock_netbox_module, data_find_ids_return):
     """Test that we can get a real mock NetboxModule."""
-    assert mock_netbox_module.data == find_ids_return
+    assert mock_netbox_module.data == data_find_ids_return
 
 
 @pytest.mark.parametrize("before, after", load_relative_test_data("normalize_data"))

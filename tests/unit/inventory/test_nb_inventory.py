@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 # Copyright: (c) 2020, Hillsong, Douglas Heriot (@DouglasHeriot) <douglas.heriot@hillsong.com>
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+# pylint: disable=protected-access
+# pylint: disable=redefined-outer-name
 
-from __future__ import absolute_import, division, print_function
-
-__metaclass__ = type
+"""
+Unit tests for the NetBox inventory plugin.
+"""
 
 from functools import partial
 from pathlib import Path
@@ -27,6 +29,7 @@ load_relative_test_data = partial(load_test_data, Path(__file__).resolve().paren
     "parameter, expected", load_relative_test_data("validate_query_parameter")
 )
 def test_validate_query_parameter(inventory_fixture, parameter, expected):
+    """Verify that query parameters are correctly validated against allowed keys."""
     value = "some value, doesn't matter"
     result = inventory_fixture.validate_query_parameter(
         {parameter: value}, inventory_fixture.allowed_device_query_parameters
@@ -38,6 +41,7 @@ def test_validate_query_parameter(inventory_fixture, parameter, expected):
     "parameters, expected", load_relative_test_data("filter_query_parameters")
 )
 def test_filter_query_parameters(inventory_fixture, parameters, expected):
+    """Test filtering of query parameters to include only allowed ones."""
     result = inventory_fixture.filter_query_parameters(
         parameters, inventory_fixture.allowed_device_query_parameters
     )
@@ -57,6 +61,7 @@ def test_filter_query_parameters(inventory_fixture, parameters, expected):
 
 @pytest.mark.parametrize("options, expected", load_relative_test_data("refresh_url"))
 def test_refresh_url(inventory_fixture, options, expected):
+    """Check that refresh_url generates the correct tuple from filters and context."""
     inventory_fixture.query_filters = options["query_filters"]
     inventory_fixture.device_query_filters = options["device_query_filters"]
     inventory_fixture.vm_query_filters = options["vm_query_filters"]
@@ -68,6 +73,9 @@ def test_refresh_url(inventory_fixture, options, expected):
 
 
 def test_refresh_lookups(inventory_fixture):
+    """Ensure refresh_lookups propagates exceptions from threads to the main thread."""
+
+    # pylint: disable=broad-exception-raised
     def raises_exception():
         raise Exception("Error from within a thread")
 
@@ -82,7 +90,8 @@ def test_refresh_lookups(inventory_fixture):
 
 
 @pytest.mark.parametrize(
-    "plurals, services, virtual_disks, interfaces, dns_name, ansible_host_dns_name, racks, expected, not_expected",
+    "plurals, services, virtual_disks, interfaces, dns_name, \
+        ansible_host_dns_name, racks, expected, not_expected",
     load_relative_test_data("group_extractors"),
 )
 def test_group_extractors(
@@ -97,6 +106,7 @@ def test_group_extractors(
     expected,
     not_expected,
 ):
+    """Verify group_extractors correctly includes expected keys and excludes others."""
     inventory_fixture.plurals = plurals
     inventory_fixture.services = services
     inventory_fixture.virtual_disks = virtual_disks
@@ -120,6 +130,7 @@ def test_group_extractors(
 def test_get_resource_list_chunked(
     inventory_fixture, api_url, max_uri_length, query_key, query_values, expected
 ):
+    """Test chunked retrieval of resources based on URI length limits."""
     mock_get_resource_list = Mock()
     mock_get_resource_list.return_value = ["resource"]
 
@@ -141,6 +152,7 @@ def test_get_resource_list_chunked(
 )
 @pytest.mark.parametrize("netbox_ver", ["2.0.2", "3.0.0"])
 def test_fetch_api_docs(inventory_fixture, netbox_ver):
+    """Ensure fetch_api_docs correctly handles NetBox API documentation files."""
     mock_fetch_information = Mock()
     mock_fetch_information.side_effect = [
         {"netbox-version": netbox_ver},
@@ -166,6 +178,7 @@ def test_fetch_api_docs(inventory_fixture, netbox_ver):
 
 
 def test_new_token(inventory_fixture):
+    """Check that _set_authorization correctly sets the Authorization header."""
     inventory_fixture.templar = Mock(
         template=Mock(return_value={"type": "foo", "value": "bar"})
     )
@@ -182,6 +195,7 @@ def test_new_token(inventory_fixture):
     "custom_fields, expected", load_relative_test_data("extract_custom_fields")
 )
 def test_extract_custom_fields(inventory_fixture, custom_fields, expected):
+    """Verify extraction of custom fields from inventory objects."""
     extracted_custom_fields = inventory_fixture.extract_custom_fields(
         {"custom_fields": custom_fields}
     )
@@ -190,6 +204,7 @@ def test_extract_custom_fields(inventory_fixture, custom_fields, expected):
 
 
 def test_rename_variables(inventory_fixture):
+    """Test renaming of inventory variables according to configured patterns."""
     inventory_fixture.rename_variables = inventory_fixture.parse_rename_variables(
         (
             {"pattern": r"cluster(.*)", "repl": r"netbox_cluster\1"},

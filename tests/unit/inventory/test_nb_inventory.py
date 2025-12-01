@@ -11,90 +11,16 @@ from pathlib import Path
 from unittest.mock import Mock, call, mock_open, patch
 
 import pytest
-from packaging import version
 
 try:
-    from ansible_collections.netbox.netbox.plugins.inventory.nb_inventory import (
-        InventoryModule,
-    )
     from ansible_collections.netbox.netbox.tests.unit.helpers.load_data import (
         load_test_data,
     )
 
 except ImportError:
-    import sys
-
-    # Not installed as a collection
-    # Try importing relative to root directory of this ansible_modules project
-
-    sys.path.append("plugins/inventory")
-    sys.path.append("tests")
     from tests.unit.helpers.load_data import load_test_data
 
 load_relative_test_data = partial(load_test_data, Path(__file__).resolve().parent)
-
-
-class MockInventory:
-    def __init__(self):
-        self.variables = {}
-
-    def set_variable(self, hostname, key, value):
-        if hostname not in self.variables:
-            self.variables[hostname] = {}
-
-        self.variables[hostname][key] = value
-
-
-@pytest.fixture
-def inventory_fixture(
-    allowed_device_query_parameters_fixture, allowed_vm_query_parameters_fixture
-):
-    inventory = InventoryModule()
-    inventory.api_endpoint = "https://netbox.test.endpoint:1234"
-
-    # Fill in data that is fetched dynamically
-    inventory.api_version = version.Version("2.0")
-    inventory.allowed_device_query_parameters = allowed_device_query_parameters_fixture
-    inventory.allowed_vm_query_parameters = allowed_vm_query_parameters_fixture
-
-    # Inventory mock, to validate what has been set via inventory.inventory.set_variable
-    inventory.inventory = MockInventory()
-
-    return inventory
-
-
-@pytest.fixture
-def allowed_device_query_parameters_fixture():
-    # Subset of parameters - real list is fetched dynamically from NetBox openapi endpoint
-    return [
-        "id",
-        "interfaces",
-        "has_primary_ip",
-        "mac_address",
-        "name",
-        "platform",
-        "rack_id",
-        "region",
-        "role",
-        "tag",
-    ]
-
-
-@pytest.fixture
-def allowed_vm_query_parameters_fixture():
-    # Subset of parameters - real list is fetched dynamically from NetBox openapi endpoint
-    return [
-        "id",
-        "virtual_disks",
-        "interfaces",
-        "disk",
-        "mac_address",
-        "name",
-        "platform",
-        "region",
-        "role",
-        "tag",
-    ]
 
 
 @pytest.mark.parametrize(

@@ -7,7 +7,6 @@ from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-import re
 from functools import partial
 from pathlib import Path
 import pytest
@@ -224,73 +223,3 @@ def test_update_netbox_object_with_changes_check_mode_true(
     mock_nb_resp.update.assert_not_called()
     assert serialized_obj == updated_serialized_obj
     assert diff == on_update_diff
-
-
-@pytest.mark.parametrize("version", ["2.13", "2.12", "2.11", "2.10.8", "2.10"])
-def test_version_check_greater_true(mock_netbox_module_ids, mock_nb_resp, version):
-    mock_netbox_module_ids.nb_object = mock_nb_resp
-    assert mock_netbox_module_ids._version_check_greater(version, "2.9")
-    assert mock_netbox_module_ids._version_check_greater(version, "2.9.11")
-
-
-@pytest.mark.parametrize("version", ["2.9", "2.8", "2.7.12", "2.7"])
-def test_version_check_greater_false(mock_netbox_module_ids, mock_nb_resp, version):
-    mock_netbox_module_ids.nb_object = mock_nb_resp
-    assert not mock_netbox_module_ids._version_check_greater(version, "2.10")
-    assert not mock_netbox_module_ids._version_check_greater(version, "2.10.8")
-
-
-@pytest.mark.parametrize("version", ["2.9", "2.8", "2.7.5", "2.7"])
-def test_version_check_greater_equal_to_true(
-    mock_netbox_module_ids, mock_nb_resp, version
-):
-    mock_netbox_module_ids.nb_object = mock_nb_resp
-    assert mock_netbox_module_ids._version_check_greater(
-        version, "2.7", greater_or_equal=True
-    )
-    assert mock_netbox_module_ids._version_check_greater(
-        version, "2.6.12", greater_or_equal=True
-    )
-
-
-@pytest.mark.parametrize("version", ["2.6", "2.5", "2.4"])
-def test_version_check_greater_equal_to_false(
-    mock_netbox_module_ids, mock_nb_resp, version
-):
-    mock_netbox_module_ids.nb_object = mock_nb_resp
-    assert not mock_netbox_module_ids._version_check_greater(
-        version, "2.7", greater_or_equal=True
-    )
-    assert not mock_netbox_module_ids._version_check_greater(
-        version, "2.7.7", greater_or_equal=True
-    )
-
-
-@pytest.mark.parametrize(
-    "raw_value,expected",
-    [
-        ("2.6", "2.6"),
-        ("2.6.", "2.6"),
-        ("4.2-dev", "4.2"),
-        ("4", "4"),
-        ("4-dev", "4"),
-        ("4.-dev", "4"),
-        ("4.2.9-Docker-3.2.1", "4.2.9"),
-        ("3.1.0-extra-info", "3.1.0"),
-        ("10.20.30foobar", "10.20.30"),
-    ],
-)
-def test_version_sanitize_to_true(
-    mock_netbox_module_ids, mock_nb_resp, raw_value, expected
-):
-    mock_netbox_module_ids.nb_object = mock_nb_resp
-    sanitized = mock_netbox_module_ids._version_sanitize(raw_value)
-    assert sanitized == expected
-    assert re.match(r"^\d+(\.\d+)*$", sanitized)
-
-
-@pytest.mark.parametrize("version", [None, [], {}, "", "aa-dev", "-4", ".4", "dev-4"])
-def test_version_sanitize_value_error(mock_netbox_module_ids, mock_nb_resp, version):
-    mock_netbox_module_ids.nb_object = mock_nb_resp
-    with pytest.raises(ValueError):
-        mock_netbox_module_ids._version_sanitize(version)

@@ -388,11 +388,11 @@ import math
 import os
 import re
 import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from functools import partial
 from sys import version as python_version
-from threading import Thread
-from typing import Iterable
+from typing import Iterable, Callable
 from itertools import chain
 from collections import defaultdict
 from ipaddress import ip_interface
@@ -1580,42 +1580,43 @@ class InventoryModule(BaseInventoryPlugin, Constructable, Cacheable):
 
         return lookups
 
-    def refresh_lookups(self, lookups):
-        # Exceptions that occur in threads by default are printed to stderr, and ignored by the main thread
-        # They need to be caught, and raised in the main thread to prevent further execution of this plugin
+    @staticmethod
+    def refresh_lookups(lookups: list[Callable[[], None]]) -> None:
+        """
+        Execute a list of lookup callables concurrently, ensuring that any exceptions
+        raised are captured and propagated to the main thread.
 
-        thread_exceptions = []
+        Args:
+            lookups (list[Callable[[], None]]): List of functions to execute. Each function
+                may perform data fetching or other plugin-related tasks.
 
-        def handle_thread_exceptions(lookup):
-            def wrapper():
+        Raises:
+            ExceptionGroup: Aggregates all exceptions raised by any lookup function.
+                If multiple lookups fail, all exceptions are included.
+        """
+        exceptions = []
+
+        def wrapper(lookup):
+            try:
+                lookup()
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                exceptions.append(e)
+
+        # Use ThreadPoolExecutor to run lookups in parallel threads
+        with ThreadPoolExecutor() as executor:
+            futures = [executor.submit(wrapper, lookup) for lookup in lookups]
+            for future in as_completed(futures):
+                # This will raise exceptions from the worker threads if any occurred
                 try:
-                    lookup()
-                except Exception as e:
-                    # Save for the main-thread to re-raise
-                    # Also continue to raise on this thread, so the default handler can run to print to stderr
-                    thread_exceptions.append(e)
-                    raise e
+                    future.result()
+                except Exception:  # pylint: disable=broad-exception-caught
+                    # Already captured in `exceptions`, ignore here to continue all lookups
+                    pass
 
-            return wrapper
-
-        thread_list = []
-
-        try:
-            for lookup in lookups:
-                thread = Thread(target=handle_thread_exceptions(lookup))
-                thread_list.append(thread)
-                thread.start()
-
-            for thread in thread_list:
-                thread.join()
-
-            # Wait till we've joined all threads before raising any exceptions
-            for exception in thread_exceptions:
-                raise exception
-
-        finally:
-            # Avoid retain cycles
-            thread_exceptions = None
+        if exceptions:
+            raise ExceptionGroup(
+                "Multiple errors occurred in refresh_lookups", exceptions
+            )
 
     def fetch_api_docs(self):
         try:

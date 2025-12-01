@@ -127,6 +127,19 @@ def mock_netbox_module_ids(mocker, mock_ansible_module, data_find_ids_return):
 
 
 @pytest.fixture
+def mock_netbox_module_version(mocker, mock_ansible_module):
+    """
+    Returns a NetboxModule instance with a mocked NetBox API client
+    simulating version 4.1.1 for testing version-dependent logic.
+    """
+    nb_client = mocker.MagicMock(name="pynetbox.api")
+    nb_client.version = "4.1"
+    nb_client.status.return_value = {"netbox-version": "4.1.1"}
+    netbox = NetboxModule(mock_ansible_module, NB_DEVICES, nb_client=nb_client)
+    return netbox
+
+
+@pytest.fixture
 def mock_nb_resp(mocker, data_arg_spec_data):
     """
     Return a mocked NetBox object simulating CRUD operations.

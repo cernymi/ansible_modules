@@ -22,6 +22,10 @@ jobs:
           config_file: .yamllint.yml
           strict: true
 
+  unit-galaxy:
+    uses: minitriga/ansible-content-actions/.github/workflows/unit.yaml@patch-1
+    needs: linting
+
   unit_testing:
     runs-on: ubuntu-24.04
     needs: linting
